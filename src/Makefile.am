@@ -1,0 +1,2 @@
+bin_PROGRAMS=rbxchatserv
+rbxchatserv_SOURCES=rbxchatserv.cpp
