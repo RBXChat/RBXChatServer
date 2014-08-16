@@ -29,7 +29,7 @@
 
 using namespace std;
 
-const char* motd = _("Welcome to GSKW's RBXChat server, <i>%s</i>!");
+const char* motd = _("Welcome to GSKW's RBXChat server, <i>%s</i>!<br />Rules:<ol><li>No links to bit.ly or adf.ly as well as other similar sites.<li>No NSFW content<li>No alternate accounts<li>No spamming<li>If you ever manage to crack the system in anyway, congratulations<li><li>Reports bugs and other issues at <a href='http://github.com/rbxchat'>GitHub</a></ol>");
 
 string help_commands = ".join <channel> - Join a channel. Channel names begin with a #.<br />\
 .broadcast <message> - Broadcast a message. You have to be an operator.<br />\
@@ -69,14 +69,25 @@ void conn_handler(int index) {
 
     // Client beginning info handler...
     string buf = string(""), cmpbuf = string(""), vercode = string("");
-    int forked, regflag = 0;
+    int forked, regflag = 0, reject = 1, currarg = 0,i, found = 0, nfound = 0, canverify;
+    string arguments[3], currarg2;
     char c;
+    const char* clientdata;
+    struct authinfo ai;
+    recv(clients[index], &c, 1, 0);
+    if (c != '\x05') {
+    	if (c > '\x05')
+    		send(clients[index], "Error: server out of date!", strlen("Error: server out of date!"), 0);
+    	else
+    		send(clients[index], "Error: client out of date!", strlen("Error: client out of date!"), 0);
+    	reject = 2;
+    	goto disconnect;
+    }
     while (recv(clients[index], &c, 1, 0) > 0) {
         buf += string(1, c);
         if (c == '\x03' || c == '\0') break;
     }
-    const char* clientdata = buf.c_str();
-    //cout << "length = " << buf.length();
+    clientdata = buf.c_str();
     if (clientdata[0] != '\x01' && clientdata[0] != '\x04') {
         cerr << _("Client gave invalid command!") << endl;
         close(clients[index]);
@@ -84,19 +95,11 @@ void conn_handler(int index) {
     }
     else {
         // 1 = login, 4 = register
-        string arguments[3];
-        int currarg = 0;
-        string currarg2;
-        int i, found = 0, nfound = 0, canverify;
-        struct authinfo ai;
-        int reject = 0;
-        //setsockopt(clients[index], SOL_SOCKET, SO_KEEPALIVE, &optval, optlen);
         for (i = 1; i < strlen(clientdata); i++) {
             if (clientdata[i] == '\x02') {
                 arguments[currarg] = currarg2;
                 ++currarg;
                 currarg2 = string("");
-                //printf("Seperate... CURRARG = %d\n", currarg);
             }
             else if (clientdata[i] == '\x03') {
                 arguments[currarg] = currarg2;
@@ -104,15 +107,9 @@ void conn_handler(int index) {
             }
             else
                 currarg2 += clientdata[i];
-            //printf("%X\n", clientdata[i]);
-            
         }
         ai.username = arguments[0];
         ai.password = arguments[1];
-        //if (clientdata[0] == '\x04') {
-        //
-        //}
-        //cout << "authinfotbl = " << authinfotbl.size() << endl;
         for (i = 0; i < authinfotbl.size(); i++) {
         	struct authinfo currai = authinfotbl[i];
         	if (currai.username == ai.username && currai.password == md5(ai.password)) {
@@ -125,7 +122,6 @@ void conn_handler(int index) {
         	}
         	else if (currai.username == ai.username)
         		nfound = 1;
-        	//cout << "un = " << currai.username << " pw = " << currai.password << endl;
         }
         char outfilename[50];
         sprintf(outfilename, "buffers/buffer_out_%d", clients[index]);
@@ -181,7 +177,7 @@ void conn_handler(int index) {
 	        }
 
 	        registered:
-	        char motdbuffer[200];
+	        char motdbuffer[2000];
 	        sprintf(motdbuffer, motd, arguments[0].c_str());
 	        send(clients[index], motdbuffer, strlen(motdbuffer), 0);
 	        //cout << _("sent motd") << endl;
@@ -232,8 +228,10 @@ void conn_handler(int index) {
 		            	cout << _("recv error") << endl;
 		            	disconnect:
 		            	cout << arguments[0] << _(" DISCONNECTED! mode = ") << reject << endl;
-		            	if (reject)
+		            	if (reject == 1)
 		            		fputc('\x04', connstream);
+		            	else if (reject == 2)
+		            		shutdown(clients[index], 2);
 		            	else
 		            		fputc('\x02', connstream);
 		            	fflush(connstream);
